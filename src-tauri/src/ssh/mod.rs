@@ -58,8 +58,7 @@ pub struct SshClient {
 pub struct PtySession {
     pub input_tx: mpsc::Sender<Vec<u8>>,
     pub output_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Vec<u8>>>>,
-    pub channel_id: ChannelId,
-    /// Sender for resize requests (cols, rows) — forwarded to the SSH channel
+    /// Sender for resize requests (cols, rows) — forwarded to the PTY (SSH channel or local shell)
     pub resize_tx: mpsc::Sender<(u32, u32)>,
     /// Cancellation token — cancelled when this session is torn down.
     /// The WebSocket reader task should select on this to stop promptly.
@@ -102,10 +101,22 @@ impl SshClient {
         // Connection timeout: 3 seconds
         let connection_timeout = Duration::from_secs(3);
 
-        let mut ssh_session = tokio::time::timeout(
-            connection_timeout,
-            client::connect(Arc::new(ssh_config), (&config.host[..], config.port), Client)
-        ).await
+        let ssh_config = Arc::new(ssh_config);
+        let mut ssh_session = tokio::time::timeout(connection_timeout, async {
+            let socket = tokio::net::TcpStream::connect((&config.host[..], config.port))
+                .await
+                .map_err(anyhow::Error::from)?;
+            // TCP_NODELAY: disable Nagle's algorithm so each keystroke packet is
+            // sent immediately instead of waiting for the previous packet's ACK.
+            // OpenSSH does the same for interactive (TTY) sessions — without this,
+            // typing in the terminal visibly lags, especially while monitor/log
+            // polling shares the connection. russh's own client::connect does NOT
+            // set it, hence the manual connect_stream.
+            let _ = socket.set_nodelay(true);
+            client::connect_stream(ssh_config, socket, Client)
+                .await
+                .map_err(anyhow::Error::from)
+        }).await
             .map_err(|_| anyhow::anyhow!("Connection timed out after 3 seconds. Please check the host address and network connectivity."))?
             .map_err(|e| anyhow::anyhow!("Failed to connect to {}:{}: {}", config.host, config.port, e))?;
 
@@ -289,8 +300,6 @@ impl SshClient {
             let (input_tx, mut input_rx) = mpsc::channel::<Vec<u8>>(1000); // Increased from 100
             let (output_tx, output_rx) = mpsc::channel::<Vec<u8>>(128); // Bounded: back-pressure to SSH window
 
-            let channel_id = channel.id();
-
             // Clone channel for input task
             let input_channel = channel.make_writer();
 
@@ -369,7 +378,6 @@ impl SshClient {
             Ok(PtySession {
                 input_tx,
                 output_rx: Arc::new(tokio::sync::Mutex::new(output_rx)),
-                channel_id,
                 resize_tx,
                 cancel: CancellationToken::new(),
             })

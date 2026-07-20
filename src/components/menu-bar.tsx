@@ -55,7 +55,6 @@ interface MenuBarProps {
   onToggleFullscreen?: () => void;
   onOpenSettings?: () => void;
   onOpenSFTP?: () => void;
-  onCheckForUpdates?: () => void;
   onNewTab?: () => void;
   onCloneTab?: () => void;
   onNextTab?: () => void;
@@ -90,7 +89,6 @@ export function MenuBar({
   onToggleFullscreen: _onToggleFullscreen,
   onOpenSettings,
   onOpenSFTP: _onOpenSFTP,
-  onCheckForUpdates,
   onNewTab,
   onCloneTab,
   onNextTab,
@@ -348,11 +346,6 @@ export function MenuBar({
           <DropdownMenuItem onClick={onOpenSettings}>
             <Settings className="mr-2 h-4 w-4" />
             {t('menuBar.options')}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onCheckForUpdates}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            {t('menuBar.checkForUpdates')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

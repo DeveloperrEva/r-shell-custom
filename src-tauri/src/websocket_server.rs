@@ -21,6 +21,10 @@ pub enum WsMessage {
         connection_id: String,
         cols: u32,
         rows: u32,
+        /// When true, spawn a LOCAL shell instead of using an SSH connection.
+        /// `#[serde(default)]` keeps existing SSH StartPty messages (no `local`) valid.
+        #[serde(default)]
+        local: bool,
     },
     /// Terminal input (user typing)
     Input {
@@ -115,8 +119,13 @@ const WS_OUTPUT_QUEUE_CAPACITY: usize = 256;
 /// Batch PTY output into frames of at most this size before sending.
 const OUTPUT_FLUSH_BYTES: usize = 16 * 1024;
 
-/// Maximum time (ms) between flushes — keeps latency low for slow output.
-const OUTPUT_FLUSH_INTERVAL_MS: u128 = 10;
+/// Maximum time (ms) between flushes — keeps interactive echo latency low.
+/// Lowered from 10ms: the first char after idle already flushes immediately, but
+/// each subsequent char during continuous typing was held up to this interval
+/// before its frame reached the WS sender. 3ms trims that residual per-char hold
+/// without adding flood-frame overhead — a flood hits the 16 KB OUTPUT_FLUSH_BYTES
+/// size gate in well under 3ms, so the interval is never the active gate then.
+const OUTPUT_FLUSH_INTERVAL_MS: u128 = 3;
 
 /// Timeout (ms) for sending JSON *control* messages.  Control messages are
 /// best-effort: if the channel is saturated we drop the ACK rather than block
@@ -276,6 +285,9 @@ impl WebSocketServer {
 
     /// Handle a single WebSocket connection
     async fn handle_connection(&self, stream: TcpStream) -> Result<()> {
+        // TCP_NODELAY: PTY output frames are small and latency-critical (every
+        // keystroke echo travels through this socket) — don't let Nagle batch them.
+        let _ = stream.set_nodelay(true);
         let ws_stream = accept_async(stream).await?;
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
@@ -406,18 +418,25 @@ impl WebSocketServer {
                 connection_id,
                 cols,
                 rows,
+                local,
             } => {
                 tracing::info!(
-                    "Starting PTY connection: {} ({}x{})",
+                    "Starting {} PTY connection: {} ({}x{})",
+                    if local { "local" } else { "remote" },
                     connection_id,
                     cols,
                     rows
                 );
 
-                let generation = self
-                    .connection_manager
-                    .start_pty_connection(&connection_id, cols, rows)
-                    .await?;
+                let generation = if local {
+                    self.connection_manager
+                        .start_local_pty_connection(&connection_id, cols, rows)
+                        .await?
+                } else {
+                    self.connection_manager
+                        .start_pty_connection(&connection_id, cols, rows)
+                        .await?
+                };
 
                 let cancel_token = self
                     .connection_manager

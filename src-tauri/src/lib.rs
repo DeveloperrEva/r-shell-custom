@@ -1,7 +1,9 @@
 mod commands;
 mod connection_manager;
 mod desktop_protocol;
+mod editor;
 mod ftp_client;
+mod local_pty;
 mod os_detect;
 mod rdp_client;
 mod sftp_client;
@@ -114,14 +116,6 @@ fn build_app_menu<F: Fn(&str) -> String>(
         true,
         &[
             &MenuItem::with_id(app, "settings", &t("menuBar.options"), true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(
-                app,
-                "check_updates",
-                &t("menuBar.checkForUpdates"),
-                true,
-                None::<&str>,
-            )?,
         ],
     )?;
 
@@ -237,6 +231,10 @@ pub fn run() {
 
                 // Start WebSocket server for terminal I/O
                 // Try ports 9001-9010 to avoid conflicts with other instances
+                // Sweep any external-editor temp dirs left behind by a previous
+                // run whose sync tasks were aborted on process exit.
+                let _ = std::fs::remove_dir_all(std::env::temp_dir().join("r-shell-edit"));
+
                 let ws_server = Arc::new(WebSocketServer::new(connection_manager_clone));
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = ws_server.start().await {
@@ -251,6 +249,7 @@ pub fn run() {
             let _ = app.emit("menu-action", event.id().0.as_str());
         })
         .manage(connection_manager)
+        .manage(editor::EditSessionRegistry::default())
         .invoke_handler(tauri::generate_handler![
             commands::ssh_connect,
             commands::ssh_cancel_connect,
@@ -281,8 +280,6 @@ pub fn run() {
             commands::read_file_content,
             commands::read_remote_file_base64,
             commands::copy_file,
-            commands::detect_gpu,
-            commands::get_gpu_stats,
             commands::get_websocket_port,
             // Standalone SFTP/FTP commands
             commands::sftp_connect,
@@ -317,6 +314,10 @@ pub fn run() {
             commands::desktop_resize,
             commands::update_menu_language,
             commands::get_system_locale,
+            // External editor (VS Code round-trip) commands
+            editor::open_in_external_editor,
+            editor::close_external_editor_session,
+            editor::list_external_editor_sessions,
             // Note: PTY terminal I/O now uses WebSocket instead of IPC
             // WebSocket server runs on a dynamically assigned port (9001-9010)
         ])

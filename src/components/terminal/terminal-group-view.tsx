@@ -38,7 +38,7 @@ function useThemeKey(): number {
 
 export function TerminalGroupView({ groupId }: TerminalGroupViewProps) {
   const { state, dispatch } = useTerminalGroups();
-  const { onDuplicateTab, onNewTab, onReconnectTab } = useTerminalCallbacks();
+  const { onDuplicateTab, onNewTab, onReconnectTab, onNewLocalTab } = useTerminalCallbacks();
   const group = state.groups[groupId];
   const isActive = state.activeGroupId === groupId;
   const themeKey = useThemeKey();
@@ -116,6 +116,7 @@ export function TerminalGroupView({ groupId }: TerminalGroupViewProps) {
         onReconnect={handleReconnect}
         onDuplicateTab={onDuplicateTab}
         onNewTab={onNewTab}
+        onNewLocalTab={onNewLocalTab}
       />
       <div className="flex-1 relative overflow-hidden">
         {showWelcome ? (
@@ -161,6 +162,7 @@ export function TerminalGroupView({ groupId }: TerminalGroupViewProps) {
                   username={tab.username}
                   themeKey={themeKey}
                   isActive={isActive && tab.id === group.activeTabId}
+                  isLocal={tab.protocol === 'Local'}
                   onConnectionStatusChange={handleConnectionStatusChange}
                 />
               ) : (

@@ -77,14 +77,18 @@ impl StandaloneSftpClient {
         };
         let connection_timeout = Duration::from_secs(10);
 
-        let mut ssh_session = tokio::time::timeout(
-            connection_timeout,
-            client::connect(
-                Arc::new(ssh_config),
-                (&config.host[..], config.port),
-                Client,
-            ),
-        )
+        let ssh_config = Arc::new(ssh_config);
+        let mut ssh_session = tokio::time::timeout(connection_timeout, async {
+            let socket = tokio::net::TcpStream::connect((&config.host[..], config.port))
+                .await
+                .map_err(anyhow::Error::from)?;
+            // TCP_NODELAY — same rationale as ssh::SshClient::connect: don't let
+            // Nagle's algorithm batch small SFTP request packets.
+            let _ = socket.set_nodelay(true);
+            client::connect_stream(ssh_config, socket, Client)
+                .await
+                .map_err(anyhow::Error::from)
+        })
         .await
         .map_err(|_| {
             anyhow::anyhow!(

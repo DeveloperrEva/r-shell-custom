@@ -3,6 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import en from '@/locales/en.json';
 import zhCN from '@/locales/zh-CN.json';
+import ru from '@/locales/ru.json';
 
 /** Keys used by the native macOS menu bar */
 const NATIVE_MENU_KEYS = [
@@ -53,6 +54,7 @@ export const AUTO = 'auto';
  */
 function resolveCode(raw: string): string {
   if (raw.startsWith('zh')) return 'zh-CN';
+  if (raw.startsWith('ru')) return 'ru';
   return 'en';
 }
 
@@ -82,6 +84,7 @@ i18n.use(initReactI18next).init({
   resources: {
     en: { translation: en },
     'zh-CN': { translation: zhCN },
+    ru: { translation: ru },
   },
   lng: INITIAL_LANG,
   fallbackLng: 'en',

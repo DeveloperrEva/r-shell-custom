@@ -24,7 +24,6 @@ import {
   Upload,
   Download,
   X,
-  RefreshCw,
   Code2,
   ChevronLeft,
   ChevronRight,
@@ -64,10 +63,9 @@ interface SettingsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAppearanceChange?: (settings: TerminalAppearanceSettings) => void;
-  onCheckForUpdates?: () => void;
 }
 
-export function SettingsModal({ open, onOpenChange, onAppearanceChange, onCheckForUpdates }: SettingsModalProps) {
+export function SettingsModal({ open, onOpenChange, onAppearanceChange }: SettingsModalProps) {
   const { t } = useTranslation();
   const [languagePref, setLanguagePref] = useState<string>(() => getLanguagePreference());
   const [terminalAppearance, setTerminalAppearance] = useState<TerminalAppearanceSettings>(defaultAppearanceSettings);
@@ -1015,6 +1013,7 @@ export function SettingsModal({ open, onOpenChange, onAppearanceChange, onCheckF
                     <SelectContent>
                       <SelectItem value={AUTO}>{t('settings.language.auto')}</SelectItem>
                       <SelectItem value="en">{t('settings.language.en')}</SelectItem>
+                      <SelectItem value="ru">{t('settings.language.ru')}</SelectItem>
                       <SelectItem value="zh-CN">{t('settings.language.zhCN')}</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1166,34 +1165,6 @@ export function SettingsModal({ open, onOpenChange, onAppearanceChange, onCheckF
                 </div>
 
                 <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>{t('settings.advanced.checkUpdates')}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('settings.advanced.checkUpdatesDesc')}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        onCheckForUpdates?.();
-                        // Close the modal so the update dialog / toast is not obscured.
-                        onOpenChange(false);
-                      }}
-                      className="gap-1.5"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      {t('settings.advanced.checkNow')}
-                    </Button>
-                    <Switch
-                      checked={settings.checkUpdates}
-                      onCheckedChange={(checked) => updateSetting('checkUpdates', checked)}
-                    />
-                  </div>
-                </div>
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">

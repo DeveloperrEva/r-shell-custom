@@ -159,6 +159,41 @@ impl ConnectionManager {
         Ok(current_gen)
     }
 
+    /// Start an interactive LOCAL shell PTY (spawns the user's shell). Mirrors
+    /// `start_pty_connection` but builds the session from a local shell instead of
+    /// an SSH channel, so no SSH connection is required.
+    pub async fn start_local_pty_connection(
+        &self,
+        connection_id: &str,
+        cols: u32,
+        rows: u32,
+    ) -> Result<u64> {
+        // Cancel and remove any existing PTY session for this connection first.
+        {
+            let mut pty_sessions = self.pty_sessions.write().await;
+            if let Some(old_session) = pty_sessions.remove(connection_id) {
+                old_session.cancel.cancel();
+                tracing::info!("Cancelled old local PTY session for {}", connection_id);
+            }
+        }
+
+        // Spawn the local shell PTY (no SSH client needed).
+        let pty = crate::local_pty::create_local_pty_session(cols, rows)?;
+
+        // Bump generation so any in-flight Close for the old session is ignored.
+        let mut generations = self.pty_generations.write().await;
+        let gen = generations.entry(connection_id.to_string()).or_insert(0);
+        *gen += 1;
+        let current_gen = *gen;
+        drop(generations);
+
+        // Store the PTY session.
+        let mut pty_sessions = self.pty_sessions.write().await;
+        pty_sessions.insert(connection_id.to_string(), Arc::new(pty));
+
+        Ok(current_gen)
+    }
+
     /// Send data to PTY (user input)
     /// Uses try_send for better performance (non-blocking)
     pub async fn write_to_pty(&self, connection_id: &str, data: Vec<u8>) -> Result<()> {

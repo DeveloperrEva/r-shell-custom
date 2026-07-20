@@ -12,7 +12,7 @@
 
 A modern SSH/SFTP/FTP/RDP/VNC client built with Rust and Tauri 2. **~98% less memory** than Java-based alternatives (~34 MB vs ~1.7 GB). Installer under 10 MB.
 
-**Low memory** · **Native speed** · **Multi-protocol** · **Remote desktop** · **Split terminals** · **SFTP file manager** · **GPU monitoring** · **Log viewer** · **Directory sync**
+**Low memory** · **Native speed** · **Multi-protocol** · **Remote desktop** · **Split terminals** · **SFTP file manager** · **Log viewer** · **Directory sync**
 
 [Features](#-features) · [Install](#-installation) · [Screenshots](#-screenshots) · [Development](#-development) · [Contributing](#-contributing)
 
@@ -55,7 +55,7 @@ Measured on macOS (Apple Silicon, 16 GB RAM) using `footprint`:
 
 ## 🎯 About
 
-R-Shell combines an interactive terminal, dual-panel file manager, remote desktop viewer (RDP/VNC), real-time system/GPU monitoring, and log viewing in a single VS Code-like workspace. Built with Rust for native performance and minimal resource usage.
+R-Shell combines an interactive terminal, dual-panel file manager, remote desktop viewer (RDP/VNC), real-time system monitoring, and log viewing in a single VS Code-like workspace. Built with Rust for native performance and minimal resource usage.
 
 - **Native Performance** — Tauri 2 + Rust backend, not Electron or Java
 - **AI-Generated Frontend** — UI generated from [Figma designs](https://www.figma.com/make/uUd7WO54vPnv03SmioKWqj/SSH-Client-Application)
@@ -127,14 +127,6 @@ R-Shell combines an interactive terminal, dual-panel file manager, remote deskto
 - **Uptime & Load Average** — At a glance
 - **Process Manager** — List processes sorted by CPU/MEM, kill with confirmation
 - **Real-time charts** — CPU history and memory area charts (Recharts)
-
-### 🎮 GPU Monitoring
-
-- **NVIDIA** (nvidia-smi) — Utilization, memory, temperature, power, fan speed, encoder/decoder
-- **AMD** — GPU stats support
-- **Multi-GPU** — GPU selector with individual or "all" view
-- **History charts** — Utilization, memory, temperature over time
-- **Temperature thresholds** — Green < 60°C, yellow < 75°C, orange < 85°C, red ≥ 85°C
 
 ### 🌐 Network Monitoring
 
@@ -301,7 +293,7 @@ r-shell/
 │   │   ├── sftp-panel.tsx     # Dual-panel SFTP manager
 │   │   ├── sync-dialog.tsx    # Directory synchronization
 │   │   ├── transfer-*.tsx     # Transfer queue & controls
-│   │   ├── system-monitor.tsx # CPU/MEM/Disk/GPU monitor
+│   │   ├── system-monitor.tsx # CPU/MEM/Disk monitor
 │   │   ├── network-monitor.tsx # Network stats
 │   │   ├── log-monitor.tsx    # Multi-source log viewer
 │   │   └── settings-modal.tsx # 6-tab settings

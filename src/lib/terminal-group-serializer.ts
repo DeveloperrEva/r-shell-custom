@@ -44,7 +44,7 @@ export function saveState(state: TerminalGroupState): void {
       ...state,
       groups: Object.fromEntries(
         Object.entries(state.groups).map(([id, group]) => {
-          const tabs = group.tabs.filter(t => t.tabType !== 'editor');
+          const tabs = group.tabs.filter(t => t.tabType !== 'editor' && t.protocol !== 'Local');
           return [id, {
             ...group,
             tabs,
@@ -56,7 +56,7 @@ export function saveState(state: TerminalGroupState): void {
         Object.entries(state.tabToGroupMap).filter(([tabId]) => {
           const group = state.groups[state.tabToGroupMap[tabId]];
           const tab = group?.tabs.find(t => t.id === tabId);
-          return tab?.tabType !== 'editor';
+          return tab?.tabType !== 'editor' && tab?.protocol !== 'Local';
         }),
       ),
     };
