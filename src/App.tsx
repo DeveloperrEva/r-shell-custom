@@ -1639,6 +1639,7 @@ function AppContent() {
                   selectedConnectionId={selectedConnection?.id || null}
                   activeConnections={new Set(allTabs.map(tab => tab.id))}
                   onNewConnection={handleNewTab}
+                  onNewLocalTerminal={handleNewLocalTerminal}
                   onEditConnection={handleEditConnection}
                   recentConnections={recentConnections}
                   onQuickConnect={handleQuickConnect}

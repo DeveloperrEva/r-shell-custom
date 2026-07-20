@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Monitor, Server, HardDrive, Plus, Pencil, Copy, Trash2, FolderPlus, FolderEdit, FolderInput, Zap, Clock } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Monitor, Server, HardDrive, Plus, Pencil, Copy, Trash2, FolderPlus, FolderEdit, FolderInput, Zap, Clock, Terminal as TerminalIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
@@ -69,6 +69,7 @@ interface ConnectionManagerProps {
   selectedConnectionId: string | null;
   activeConnections?: Set<string>;
   onNewConnection?: () => void;
+  onNewLocalTerminal?: () => void;
   onEditConnection?: (connection: ConnectionNode) => void;
   onDeleteConnection?: (connectionId: string) => void;
   onDuplicateConnection?: (connection: ConnectionNode) => void;
@@ -82,6 +83,7 @@ export function ConnectionManager({
   selectedConnectionId,
   activeConnections = new Set(),
   onNewConnection,
+  onNewLocalTerminal,
   onEditConnection,
   onDeleteConnection,
   onDuplicateConnection,
@@ -657,20 +659,31 @@ export function ConnectionManager({
               <TooltipContent>{t('connectionManager.newFolder')}</TooltipContent>
             </Tooltip>
 
-            {/* New Connection */}
-            <Tooltip>
-              <TooltipTrigger asChild>
+            {/* New: connection or local terminal */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={onNewConnection}
                   className="h-6 w-6 p-0"
+                  title={t('connectionManager.newConnection')}
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('connectionManager.newConnection')}</TooltipContent>
-            </Tooltip>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onNewConnection}>
+                  <Server className="w-3.5 h-3.5 mr-2" />
+                  {t('connectionManager.newConnection')}
+                </DropdownMenuItem>
+                {onNewLocalTerminal && (
+                  <DropdownMenuItem onClick={onNewLocalTerminal}>
+                    <TerminalIcon className="w-3.5 h-3.5 mr-2" />
+                    {t('welcome.newLocalTerminal')}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </TooltipProvider>
         </div>
         <div className="flex-1 overflow-auto">
