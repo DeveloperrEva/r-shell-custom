@@ -27,9 +27,10 @@ import { Separator } from './ui/separator';
 interface WelcomeScreenProps {
   onNewConnection: () => void;
   onOpenSettings: () => void;
+  onNewLocalTerminal?: () => void;
 }
 
-export function WelcomeScreen({ onNewConnection, onOpenSettings }: WelcomeScreenProps) {
+export function WelcomeScreen({ onNewConnection, onOpenSettings, onNewLocalTerminal }: WelcomeScreenProps) {
   const { t } = useTranslation();
   const quickActions = [
     {
@@ -40,6 +41,15 @@ export function WelcomeScreen({ onNewConnection, onOpenSettings }: WelcomeScreen
       variant: 'default' as const,
       shortcut: '⌘N'
     },
+    // Local terminal is reachable here too, so an empty workspace (no tabs yet)
+    // can spawn a local shell without first opening a server connection.
+    ...(onNewLocalTerminal ? [{
+      icon: Terminal,
+      title: t('welcome.newLocalTerminal'),
+      description: t('welcome.newLocalTerminalDesc'),
+      action: onNewLocalTerminal,
+      variant: 'outline' as const,
+    }] : []),
     {
       icon: FolderTree,
       title: t('welcome.connectionManager'),

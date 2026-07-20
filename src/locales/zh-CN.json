@@ -407,7 +407,9 @@
       "transferQueueDesc": "队列文件传输，支持进度、速度、预计完成时间、取消和重试控制",
       "autoUpdate": "自动更新",
       "autoUpdateDesc": "检查更新，支持下载进度和点击安装并重新启动"
-    }
+    },
+    "newLocalTerminal": "本地终端",
+    "newLocalTerminalDesc": "在本机打开一个 shell"
   },
   "menuBar": {
     "file": "文件",

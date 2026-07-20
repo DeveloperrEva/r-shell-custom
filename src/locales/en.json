@@ -407,7 +407,9 @@
       "transferQueueDesc": "Queued file transfers with progress, speed, ETA, cancel, and retry controls",
       "autoUpdate": "Auto-Update",
       "autoUpdateDesc": "Check for updates with download progress and one-click install-and-relaunch"
-    }
+    },
+    "newLocalTerminal": "Local Terminal",
+    "newLocalTerminalDesc": "Open a shell on this machine"
   },
   "menuBar": {
     "file": "File",

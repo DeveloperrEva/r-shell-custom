@@ -1661,6 +1661,7 @@ function AppContent() {
                 <WelcomeScreen
                   onNewConnection={handleNewTab}
                   onOpenSettings={handleOpenSettings}
+                  onNewLocalTerminal={handleNewLocalTerminal}
                 />
               ) : (
                 <ResizablePanelGroup direction="vertical" className="flex-1">
