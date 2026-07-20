@@ -61,6 +61,7 @@ interface GroupTabBarProps {
   tabs: TerminalTab[];
   activeTabId: string | null;
   onNewTab?: () => void;
+  onNewLocalTab?: () => void;
   onDuplicateTab?: (tabId: string) => void;
   onReconnect?: (tabId: string) => void;
 }
@@ -70,6 +71,7 @@ export function GroupTabBar({
   tabs,
   activeTabId,
   onNewTab,
+  onNewLocalTab,
   onDuplicateTab,
   onReconnect,
 }: GroupTabBarProps) {
@@ -409,9 +411,23 @@ export function GroupTabBar({
           size="sm"
           className="p-2 h-8 w-8"
           onClick={onNewTab}
+          title={t('toolbar.newConnection')}
         >
           <Plus className="w-4 h-4" />
         </Button>
+
+        {/* New local terminal button */}
+        {onNewLocalTab && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-2 h-8 w-8"
+            onClick={onNewLocalTab}
+            title={t('toolbar.newLocalTerminal')}
+          >
+            <Terminal className="w-4 h-4" />
+          </Button>
+        )}
       </div>
 
       {/* Floating drag ghost — rendered via portal-like fixed positioning */}

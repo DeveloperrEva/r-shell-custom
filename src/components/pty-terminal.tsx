@@ -23,6 +23,8 @@ interface PtyTerminalProps {
   appearanceKey?: number;
   themeKey?: number;
   isActive?: boolean;
+  /** When true, this terminal is a LOCAL shell (spawned on this machine), not SSH. */
+  isLocal?: boolean;
   onConnectionStatusChange?: (connectionId: string, status: 'connected' | 'connecting' | 'disconnected' | 'pending') => void;
 }
 
@@ -50,6 +52,7 @@ export function PtyTerminal({
   appearanceKey = 0,
   themeKey = 0,
   isActive = true,
+  isLocal = false,
   onConnectionStatusChange
 }: PtyTerminalProps) {
   const { t } = useTranslation();
@@ -300,7 +303,7 @@ export function PtyTerminal({
     // Welcome message
     term.writeln('\x1b[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
     term.writeln(`\x1b[1;36m  ${connectionName}\x1b[0m`);
-    term.writeln(`\x1b[90m  ${username}@${host}\x1b[0m`);
+    term.writeln(`\x1b[90m  ${isLocal ? 'Local Shell' : `${username}@${host}`}\x1b[0m`);
     term.writeln(`\x1b[90m  Renderer: ${rendererRef.current.toUpperCase()}\x1b[0m`);
     term.writeln('\x1b[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
     term.write('\r\n');
@@ -397,6 +400,7 @@ export function PtyTerminal({
           connection_id: connectionId,
           cols: term.cols,
           rows: term.rows,
+          local: isLocal,
         };
         console.log(`[PTY Terminal] [${connectionId}] Starting PTY connection with ${term.cols}x${term.rows}`);
         ws.send(JSON.stringify(startMsg));
@@ -432,6 +436,15 @@ export function PtyTerminal({
       /** How many credits to grant each time watermark drops below LOW_WATER.
        *  Keeps the pipeline flowing without flooding the WS receive queue. */
       const CREDIT_BATCH = 4;
+      /** Max bytes painted SYNCHRONOUSLY (bypassing the requestAnimationFrame hop)
+       *  for an idle/interactive echo. A lone keystroke echo is 1-3 bytes; anything
+       *  under this cap is a trickle, not a flood, so we write it immediately rather
+       *  than waiting up to ~16ms for the next vsync — this is what made in-app
+       *  typing feel laggy versus a native terminal. Kept well under the backend's
+       *  OUTPUT_FLUSH_BYTES (16 KB) frames. NOTE: flood/OOM safety does NOT rest on
+       *  this size gate — the true bound is at-most-ONE synchronous write per frame
+       *  (the rafId===null cooldown in enqueueOutput); see the comment there. */
+      const MAX_SYNC_WRITE_BYTES = 2048;
 
       const grantCredits = (count: number) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -444,13 +457,10 @@ export function PtyTerminal({
         }
       };
 
-      const flushWriteBuffer = () => {
-        rafId = null;
-        if (!writeBuffer) return;
-
-        const data = writeBuffer;
-        writeBuffer = '';
-
+      // Write one chunk to xterm and run the flow-control bookkeeping. Shared by
+      // the RAF batched-flush path and the synchronous idle fast-path so credit /
+      // watermark / memory-cap handling is byte-for-byte identical on both.
+      const writeChunk = (data: string) => {
         // Enforce per-session memory cap so xterm's scrollback buffer can't
         // grow without bound on sustained high-throughput output (e.g. `yes`).
         sessionOutputRef.current += data.length;
@@ -461,20 +471,30 @@ export function PtyTerminal({
           term.writeln('\x1b[33m[Output limit reached \u2014 scrollback cleared to free memory]\x1b[0m');
         }
 
-        // Single write per animation frame — the key optimisation.
-        // Reduces term.write() calls from hundreds/s to ~60/s.
         term.write(data, () => {
-          // xterm finished processing this batch — update watermark
+          // xterm finished processing this batch - update watermark
           watermark = Math.max(watermark - data.length, 0);
 
           // Watermark-based flow control: grant credits only when the
-          // pending buffer has drained below LOW_WATER.  Skip granting
+          // pending buffer has drained below LOW_WATER. Skip granting
           // if watermark is still above HIGH_WATER (buffer still full).
           if (watermark < LOW_WATER && watermark < HIGH_WATER && creditsGranted < CREDIT_BATCH * 2) {
             grantCredits(CREDIT_BATCH);
             creditsGranted = 0; // reset counter after granting
           }
         });
+      };
+
+      const flushWriteBuffer = () => {
+        rafId = null;
+        if (!writeBuffer) return;
+
+        const data = writeBuffer;
+        writeBuffer = '';
+
+        // Single write per animation frame: the key batching optimisation for
+        // sustained output. Reduces term.write() calls from hundreds/s to ~60/s.
+        writeChunk(data);
 
         // If more data arrived during the write, schedule another flush
         if (writeBuffer) {
@@ -483,6 +503,27 @@ export function PtyTerminal({
       };
 
       const enqueueOutput = (text: string) => {
+        // Low-latency fast-path: a small chunk arriving while nothing is pending
+        // (idle -> keystroke echo) is painted SYNCHRONOUSLY in this same task,
+        // skipping the up-to-~16ms requestAnimationFrame hop that made in-app
+        // typing feel laggy versus a native terminal. We still arm a RAF as a
+        // one-frame cooldown so any follow-up chunk this frame coalesces on the
+        // batched path.
+        //
+        // FLOOD/OOM SAFETY rests on this per-frame bound, NOT on the size gate:
+        // the branch is reachable only when rafId===null, and it immediately sets
+        // rafId (reset to null only at the top of flushWriteBuffer, once per frame).
+        // So there is AT MOST ONE synchronous write per frame (plus at most one
+        // batched flush write per frame). The watermark/credit/SESSION_OUTPUT_LIMIT
+        // machinery in writeChunk runs identically on both paths, and the backend
+        // keeps stalling on credits.acquire() when xterm falls behind.
+        if (rafId === null && !writeBuffer && text.length <= MAX_SYNC_WRITE_BYTES) {
+          watermark += text.length;
+          writeChunk(text);
+          rafId = requestAnimationFrame(flushWriteBuffer);
+          return;
+        }
+
         writeBuffer += text;
         watermark += text.length;
         if (rafId === null) {

@@ -9,6 +9,8 @@ export interface TerminalCallbacks {
   onNewTab?: () => void;
   /** Full reconnect: re-establishes the backend connection then remounts the terminal. */
   onReconnectTab?: (tabId: string) => void | Promise<void>;
+  /** Open a new LOCAL terminal tab (spawns the user's shell). */
+  onNewLocalTab?: () => void;
 }
 
 const TerminalCallbacksContext = createContext<TerminalCallbacks>({});

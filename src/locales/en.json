@@ -334,7 +334,8 @@
       "label": "Language",
       "auto": "Auto (System)",
       "en": "English",
-      "zhCN": "Chinese (Simplified)"
+      "zhCN": "Chinese (Simplified)",
+      "ru": "Russian"
     },
     "button": {
       "resetToDefaults": "Reset to Defaults",
@@ -390,8 +391,8 @@
       "fileBrowserDesc": "FileZilla-style local + remote panels with transfer queue and progress tracking",
       "dirSync": "Directory Sync",
       "dirSyncDesc": "4-step sync wizard — compare, review diffs, and synchronize directories",
-      "systemMonitor": "System & GPU Monitor",
-      "systemMonitorDesc": "CPU, memory, disk, processes, and NVIDIA/AMD GPU metrics with real-time charts",
+      "systemMonitor": "System Monitor",
+      "systemMonitorDesc": "CPU, memory, disk, and processes with real-time charts",
       "networkMonitor": "Network Monitor",
       "networkMonitorDesc": "Per-interface bandwidth, latency, and active connections overview",
       "logViewer": "Log Viewer",
@@ -457,6 +458,7 @@
   },
   "toolbar": {
     "newConnection": "New Connection",
+    "newLocalTerminal": "New Local Terminal",
     "openConnection": "Open Connection",
     "quickConnect": "Quick Connect",
     "recentConnections": "Recent Connections",
@@ -508,6 +510,11 @@
       "duplicate": "Duplicate",
       "openInEditor": "Open in Editor",
       "openInLogMonitor": "Open in Log Monitor",
+      "openInVsCode": "Open in VS Code",
+      "openingInVsCode": "Opening \"{{name}}\" in VS Code…",
+      "failedToOpenInVsCode": "Failed to open in VS Code",
+      "vsCodeSynced": "Saved \"{{name}}\" back to server",
+      "vsCodeSyncFailed": "Failed to sync \"{{name}}\" to server",
       "openInOS": "Open in OS",
       "uploadFolder": "Upload Folder",
       "syncDirectories": "Sync Directories"
@@ -557,7 +564,9 @@
       "droppedPathsSkipped_other": "{{count}} dropped paths could not be uploaded",
       "queuedUploadToPath": "Queued {{count}} file(s) for upload to {{path}}",
       "enterFolderName": "Enter folder name:",
-      "enterFileName": "Enter file name:"
+      "enterFileName": "Enter file name:",
+      "dirGone": "Directory no longer exists",
+      "dirGoneDesc": "\"{{path}}\" was not found — returned to home."
     },
     "toolbar": {
       "back": "Back",
@@ -575,7 +584,7 @@
       "syncDirectories": "Sync directories (Ctrl+Shift+S)"
     },
     "selected": "{{count}} selected",
-    "loading": "Loading\u2026",
+    "loading": "Loading…",
     "downloadSelected": "Download {{count}} Selected",
     "deleteFolderTitle": "Delete Folder?",
     "deleteFileTitle": "Delete File?",
@@ -608,6 +617,18 @@
       "cancelled": "Cancelled",
       "upload": "Upload",
       "download": "Download"
+    },
+    "history": {
+      "title": "Directory history",
+      "pinned": "Pinned",
+      "recent": "Recent",
+      "empty": "No visited directories yet",
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "pinCurrent": "Pin current",
+      "pinnedCurrent": "Pinned",
+      "remove": "Remove from history",
+      "clear": "Clear"
     }
   },
   "contextMenu": {
@@ -725,6 +746,7 @@
     "switchToConnection": "Switch to Connection",
     "connect": "Connect",
     "newSubfolder": "New Subfolder",
+    "moveToGroup": "Move to group",
     "connectionsHeader": "Connections",
     "createNewFolder": "Create New Folder",
     "createFolderDesc": "Create a new folder to organize your connections.",
@@ -766,7 +788,7 @@
   "filePanel": {
     "selectDirectory": "Select a directory to view its contents",
     "noFiles": "No files found",
-    "loading": "Loading...",
+    "loading": "Loading…",
     "dropFilesHint": "Drop files here to upload",
     "items": "{{count}} item(s)",
     "itemsSelected_one": "{{count}} item selected",
@@ -786,7 +808,6 @@
       "noMatches": "No matches",
       "emptyDirectory": "Empty directory"
     },
-    "loading": "Loading…",
     "column": {
       "name": "Name",
       "size": "Size",
@@ -976,23 +997,6 @@
     "cpu": "CPU",
     "memory": "Memory",
     "swap": "Swap",
-    "gpuMonitor": "GPU Monitor",
-    "selectGpu": "GPU",
-    "allGpus": "All",
-    "noGpuDetected": "No GPU detected or drivers not installed.",
-    "supportedGpus": "Supported: NVIDIA (nvidia-smi), AMD (rocm-smi/sysfs)",
-    "gpuLabel": "GPU",
-    "gpuUtilization": "GPU",
-    "vram": "VRAM",
-    "combinedUsageHistory": "Combined Usage History",
-    "loadingGpuStats": "Loading GPU stats...",
-    "temp": "Temp",
-    "power": "Power",
-    "fan": "Fan",
-    "encoder": "Encoder",
-    "decoder": "Decoder",
-    "usageHistory": "Usage History",
-    "temperatureHistory": "Temperature History",
     "runningProcesses": "Running Processes",
     "pid": "PID",
     "mem": "Mem",
@@ -1021,8 +1025,7 @@
     "processTerminated": "Process {{pid}} terminated successfully",
     "failedToKillProcessWithError": "Failed to kill process: {{error}}",
     "unknownError": "Unknown error",
-    "failedToKillProcess": "Failed to kill process: {{error}}",
-    "gpuIndex": "GPU {{index}}"
+    "failedToKillProcess": "Failed to kill process: {{error}}"
   },
   "logMonitor": {
     "noSourcesDiscovered": "No log sources discovered",

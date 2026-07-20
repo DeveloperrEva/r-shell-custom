@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Monitor, Server, HardDrive, Plus, Pencil, Copy, Trash2, FolderPlus, FolderEdit, Zap, Clock } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Monitor, Server, HardDrive, Plus, Pencil, Copy, Trash2, FolderPlus, FolderEdit, FolderInput, Zap, Clock } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
@@ -34,11 +34,15 @@ import {
   AlertDialogTitle,
 } from './ui/alert-dialog';
 import { ConnectionStorageManager } from '../lib/connection-storage';
+import { forgetServer } from '../lib/sftp-directory-history';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from './ui/context-menu';
 import { toast } from 'sonner';
@@ -114,6 +118,9 @@ export function ConnectionManager({
   // Handle connection deletion
   const handleDelete = (connectionId: string) => {
     if (ConnectionStorageManager.deleteConnection(connectionId)) {
+      // Purge this server's SFTP directory history + pins so it doesn't linger
+      // orphaned in localStorage after the connection is gone.
+      forgetServer(connectionId);
       setConnections(loadConnections());
       toast.success(t('connectionManager.connectionDeleted'));
       if (onDeleteConnection) {
@@ -149,6 +156,19 @@ export function ConnectionManager({
           onDuplicateConnection(node);
         }
       }
+    }
+  };
+
+  // Handle moving a connection to another group/folder (via right-click menu)
+  const handleMoveToFolder = (node: ConnectionNode, targetPath: string) => {
+    if (ConnectionStorageManager.moveConnection(node.id, targetPath)) {
+      setConnections(loadConnections());
+      toast.success(t('connectionManager.movedConnection', {
+        source: node.name,
+        target: targetPath.split('/').pop(),
+      }));
+    } else {
+      toast.error(t('connectionManager.failedToMoveConnection'));
     }
   };
 
@@ -487,6 +507,27 @@ export function ConnectionManager({
                 <Copy className="w-4 h-4 mr-2" />
                 {t('connectionManager.duplicate')}
               </ContextMenuItem>
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <FolderInput className="w-4 h-4 mr-2" />
+                  {t('connectionManager.moveToGroup')}
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent className="max-h-72 overflow-auto">
+                  {ConnectionStorageManager.getValidFolders().map((folder) => {
+                    const currentFolder = ConnectionStorageManager.getConnection(node.id)?.folder;
+                    return (
+                      <ContextMenuItem
+                        key={folder.id}
+                        disabled={currentFolder === folder.path}
+                        onClick={() => handleMoveToFolder(node, folder.path)}
+                      >
+                        <Folder className="w-4 h-4 mr-2" />
+                        {folder.path}
+                      </ContextMenuItem>
+                    );
+                  })}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
               <ContextMenuSeparator />
               <ContextMenuItem
                 onClick={() => handleDelete(node.id)}

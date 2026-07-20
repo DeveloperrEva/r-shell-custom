@@ -113,6 +113,24 @@ function AppContent() {
     };
   }, []);
 
+  // External-editor (VS Code) round-trip: toast when a remote file opened in VS Code
+  // is saved and re-uploaded to the server by the backend (see src-tauri/src/editor).
+  useEffect(() => {
+    const unlistenPromises = [
+      listen<{ file_name: string }>('editor-sync', (event) => {
+        toast.success(t('fileBrowser.contextMenu.vsCodeSynced', { name: event.payload.file_name }));
+      }),
+      listen<{ file_name: string; error: string }>('editor-sync-error', (event) => {
+        toast.error(t('fileBrowser.contextMenu.vsCodeSyncFailed', { name: event.payload.file_name }), {
+          description: event.payload.error,
+        });
+      }),
+    ];
+    return () => {
+      void Promise.all(unlistenPromises).then((unlisteners) => unlisteners.forEach((u) => u()));
+    };
+  }, [t]);
+
   // Keyboard shortcuts: layout + split view
   const splitViewShortcuts = useMemo(() => {
     const groupIds = Object.keys(state.groups);
@@ -169,7 +187,7 @@ function AppContent() {
   // Save active connections when tabs change (for restore on next launch)
   useEffect(() => {
     // Editor tabs are transient — exclude them from persistence
-    const persistableTabs = allTabs.filter(tab => tab.tabType !== 'editor');
+    const persistableTabs = allTabs.filter(tab => tab.tabType !== 'editor' && tab.protocol !== 'Local');
     if (persistableTabs.length > 0) {
       const activeConnections = persistableTabs.map((tab, index) => ({
         tabId: tab.id,
@@ -675,9 +693,42 @@ function AppContent() {
     setEditingConnection(null);
   }, []);
 
+  // Open a new LOCAL terminal tab (spawns the user's shell). Each tab gets its own
+  // UUID connection id → its own local shell process. The shell is spawned lazily by
+  // the backend when PtyTerminal sends StartPty{local:true}; no dialog/connect needed.
+  const handleNewLocalTerminal = useCallback(() => {
+    if (!state.activeGroupId) return;
+    const newTab: TerminalTab = {
+      id: crypto.randomUUID(),
+      name: 'Local',
+      protocol: 'Local',
+      connectionStatus: 'connecting',
+      reconnectCount: 0,
+    };
+    dispatch({ type: 'ADD_TAB', groupId: state.activeGroupId, tab: newTab });
+  }, [state.activeGroupId, dispatch]);
+
   const handleDuplicateTab = useCallback(async (tabId: string) => {
     const tabToDuplicate = allTabs.find(tab => tab.id === tabId);
     if (!tabToDuplicate) return;
+
+    // Duplicating a local terminal just opens another independent local shell.
+    if (tabToDuplicate.protocol === 'Local') {
+      if (state.activeGroupId) {
+        dispatch({
+          type: 'ADD_TAB',
+          groupId: state.activeGroupId,
+          tab: {
+            id: crypto.randomUUID(),
+            name: 'Local',
+            protocol: 'Local',
+            connectionStatus: 'connecting',
+            reconnectCount: 0,
+          },
+        });
+      }
+      return;
+    }
 
     const originalConnectionId = tabToDuplicate.originalConnectionId || tabId;
     const connectionData = ConnectionStorageManager.getConnection(originalConnectionId);
@@ -812,6 +863,12 @@ function AppContent() {
   const handleReconnect = useCallback(async (tabId: string) => {
     const tabToReconnect = allTabs.find(tab => tab.id === tabId);
     if (!tabToReconnect) return;
+
+    // Local terminals have no connection profile — remount to spawn a fresh shell.
+    if (tabToReconnect.protocol === 'Local') {
+      dispatch({ type: 'RECONNECT_TAB', tabId });
+      return;
+    }
 
     const originalConnectionId = tabToReconnect.originalConnectionId || tabId;
     const connectionData = ConnectionStorageManager.getConnection(originalConnectionId);
@@ -1444,7 +1501,10 @@ function AppContent() {
   const isDesktopTab = activeTab?.tabType === 'desktop';
   // Editor tabs are standalone — hide extra panels like file-browser/desktop tabs
   const isEditorTab = activeTab?.tabType === 'editor';
-  const hideExtraPanels = isFileBrowserTab || isDesktopTab || isEditorTab;
+  // Local terminals have no remote server, so hide the right sidebar (monitor/logs)
+  // and the bottom file manager; switching back to an SSH tab restores them.
+  const isLocalTab = activeTab?.protocol === 'Local';
+  const hideExtraPanels = isFileBrowserTab || isDesktopTab || isEditorTab || isLocalTab;
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -1546,7 +1606,6 @@ function AppContent() {
           }
         }}
         onOpenSettings={handleOpenSettings}
-        onCheckForUpdates={() => setUpdateCheckSignal((current) => current + 1)}
         closeConnectionShortcutLabel={keyboardShortcutSettings.closeTab}
         hasActiveConnection={!!activeTab}
         canPaste={true}
@@ -1607,7 +1666,7 @@ function AppContent() {
                 <ResizablePanelGroup direction="vertical" className="flex-1">
                   {/* Terminal Grid Panel */}
                   <ResizablePanel id="terminal-grid" order={1} defaultSize={layout.bottomPanelVisible ? 70 : 100} minSize={30}>
-                    <TerminalCallbacksProvider value={{ onDuplicateTab: handleDuplicateTab, onNewTab: handleNewTab, onReconnectTab: handleReconnect }}>
+                    <TerminalCallbacksProvider value={{ onDuplicateTab: handleDuplicateTab, onNewTab: handleNewTab, onReconnectTab: handleReconnect, onNewLocalTab: handleNewLocalTerminal }}>
                       <ErrorBoundary label="Terminal">
                         <GridRenderer node={state.gridLayout} path={[]} />
                       </ErrorBoundary>
@@ -1711,7 +1770,6 @@ function AppContent() {
           // Appearance changes are handled by individual PtyTerminal instances
           // via their own settings listeners in TerminalGroupView
         }}
-        onCheckForUpdates={() => setUpdateCheckSignal((current) => current + 1)}
       />
 
       <Toaster richColors position="top-right" />

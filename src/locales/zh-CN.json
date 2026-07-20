@@ -334,7 +334,8 @@
       "label": "语言",
       "auto": "自动（跟随系统）",
       "en": "英语",
-      "zhCN": "简体中文"
+      "zhCN": "简体中文",
+      "ru": "俄语"
     },
     "button": {
       "resetToDefaults": "重置为默认值",
@@ -390,8 +391,8 @@
       "fileBrowserDesc": "类似 FileZilla 的本地+远程双面板，支持传输队列和进度跟踪",
       "dirSync": "目录同步",
       "dirSyncDesc": "4 步同步向导 — 比较、审查差异并同步目录",
-      "systemMonitor": "系统与 GPU 监视器",
-      "systemMonitorDesc": "CPU、内存、磁盘、进程以及 NVIDIA/AMD GPU 指标的实时图表",
+      "systemMonitor": "系统监视器",
+      "systemMonitorDesc": "CPU、内存、磁盘和进程的实时图表",
       "networkMonitor": "网络监视器",
       "networkMonitorDesc": "每接口带宽、延迟和活动连接概览",
       "logViewer": "日志查看器",
@@ -457,6 +458,7 @@
   },
   "toolbar": {
     "newConnection": "新建连接",
+    "newLocalTerminal": "新建本地终端",
     "openConnection": "打开连接",
     "quickConnect": "快速连接",
     "recentConnections": "最近的连接",
@@ -508,6 +510,11 @@
       "duplicate": "复制",
       "openInEditor": "在编辑器中打开",
       "openInLogMonitor": "在日志监视器中打开",
+      "openInVsCode": "在 VS Code 中打开",
+      "openingInVsCode": "正在 VS Code 中打开 \"{{name}}\"…",
+      "failedToOpenInVsCode": "在 VS Code 中打开失败",
+      "vsCodeSynced": "已将 \"{{name}}\" 保存回服务器",
+      "vsCodeSyncFailed": "同步 \"{{name}}\" 到服务器失败",
       "openInOS": "在系统中打开",
       "uploadFolder": "上传文件夹",
       "syncDirectories": "同步目录"
@@ -557,7 +564,9 @@
       "droppedPathsSkipped_other": "{{count}} 个拖放路径无法上传",
       "queuedUploadToPath": "已排队 {{count}} 个文件等待上传到 {{path}}",
       "enterFolderName": "请输入文件夹名称：",
-      "enterFileName": "请输入文件名称："
+      "enterFileName": "请输入文件名称：",
+      "dirGone": "目录已不存在",
+      "dirGoneDesc": "未找到 \"{{path}}\" — 已返回主目录。"
     },
     "toolbar": {
       "back": "后退",
@@ -575,7 +584,7 @@
       "syncDirectories": "同步目录（Ctrl+Shift+S）"
     },
     "selected": "已选择 {{count}} 项",
-    "loading": "加载中\u2026",
+    "loading": "加载中…",
     "downloadSelected": "下载选中的 {{count}} 项",
     "deleteFolderTitle": "删除文件夹？",
     "deleteFileTitle": "删除文件？",
@@ -608,6 +617,18 @@
       "cancelled": "已取消",
       "upload": "上传",
       "download": "下载"
+    },
+    "history": {
+      "title": "目录历史",
+      "pinned": "已固定",
+      "recent": "最近",
+      "empty": "暂无访问过的目录",
+      "pin": "固定",
+      "unpin": "取消固定",
+      "pinCurrent": "固定当前",
+      "pinnedCurrent": "已固定",
+      "remove": "从历史中移除",
+      "clear": "清除"
     }
   },
   "contextMenu": {
@@ -725,6 +746,7 @@
     "switchToConnection": "切换到连接",
     "connect": "连接",
     "newSubfolder": "新建子文件夹",
+    "moveToGroup": "移动到分组",
     "connectionsHeader": "连接",
     "createNewFolder": "创建新文件夹",
     "createFolderDesc": "创建新文件夹来组织您的连接。",
@@ -766,7 +788,7 @@
   "filePanel": {
     "selectDirectory": "选择目录以查看其内容",
     "noFiles": "未找到文件",
-    "loading": "加载中...",
+    "loading": "加载中…",
     "dropFilesHint": "将文件拖放到此处以上传",
     "items": "{{count}} 项",
     "itemsSelected_one": "已选择 {{count}} 项",
@@ -786,7 +808,6 @@
       "noMatches": "无匹配",
       "emptyDirectory": "空目录"
     },
-    "loading": "加载中…",
     "column": {
       "name": "名称",
       "size": "大小",
@@ -976,23 +997,6 @@
     "cpu": "CPU",
     "memory": "内存",
     "swap": "交换空间",
-    "gpuMonitor": "GPU 监视器",
-    "selectGpu": "GPU",
-    "allGpus": "全部",
-    "noGpuDetected": "未检测到 GPU 或未安装驱动程序。",
-    "supportedGpus": "支持：NVIDIA（nvidia-smi），AMD（rocm-smi/sysfs）",
-    "gpuLabel": "GPU",
-    "gpuUtilization": "GPU",
-    "vram": "VRAM",
-    "combinedUsageHistory": "综合使用历史",
-    "loadingGpuStats": "正在加载 GPU 统计...",
-    "temp": "温度",
-    "power": "功耗",
-    "fan": "风扇",
-    "encoder": "编码器",
-    "decoder": "解码器",
-    "usageHistory": "使用历史",
-    "temperatureHistory": "温度历史",
     "runningProcesses": "运行中的进程",
     "pid": "PID",
     "mem": "内存",
@@ -1021,8 +1025,7 @@
     "processTerminated": "进程 {{pid}} 已成功终止",
     "failedToKillProcessWithError": "终止进程失败：{{error}}",
     "unknownError": "未知错误",
-    "failedToKillProcess": "终止进程失败：{{error}}",
-    "gpuIndex": "GPU {{index}}"
+    "failedToKillProcess": "终止进程失败：{{error}}"
   },
   "logMonitor": {
     "noSourcesDiscovered": "未发现日志源",

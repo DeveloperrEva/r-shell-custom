@@ -6,7 +6,12 @@ const TEST_HOST = 'localhost'; // Replace with your test SSH server
 const TEST_USERNAME = 'testuser'; // Replace with your test username
 const TEST_PASSWORD = 'testpass'; // Replace with your test password
 
-describe('SSH Connection Tests', () => {
+// These are live-SSH INTEGRATION tests: they call Tauri `invoke(...)`, which
+// only works inside the running app, and they need a real SSH server at the
+// credentials above. They cannot pass in the jsdom unit-test run, so they are
+// skipped by default. To run them against a real server:
+//   RUN_SSH_INTEGRATION=1 pnpm test src/__tests__/connection.test.ts
+describe.skipIf(!process.env.RUN_SSH_INTEGRATION)('SSH Connection Tests', () => {
   let connectionId: string;
 
   beforeAll(() => {

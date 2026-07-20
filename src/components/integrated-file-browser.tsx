@@ -62,9 +62,24 @@ import {
   Pencil,
   Loader2,
   CornerLeftUp,
-  SearchX
+  SearchX,
+  History,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSeparator } from './ui/context-menu';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import {
+  getDirState,
+  recordVisit,
+  pinDir,
+  unpinDir,
+  removeRecent,
+  clearRecent,
+  normalizePath,
+  SFTP_DIR_HISTORY_CHANGED_EVENT,
+  type ServerDirState,
+} from '../lib/sftp-directory-history';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { toast } from 'sonner';
 import { isEditableTarget } from '@/lib/keyboard-shortcuts';
@@ -168,11 +183,46 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
   const [navHistory, setNavHistory] = useState<string[]>(['/home']);
   const [navIndex, setNavIndex] = useState(0);
   const navInProgress = React.useRef(false);
+  // Set to the normalized path when the user EXPLICITLY navigates (history/pin,
+  // breadcrumb, address bar). If that directory turns out to be gone, loadFiles
+  // surfaces a toast instead of silently redirecting to /home. Auto-loads
+  // (initial, tab-switch safety-net) don't set it, so the common cached-path
+  // fallback on connection switch stays silent.
+  const pendingUserNavRef = React.useRef<string | null>(null);
 
   // Editable address bar state
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [editPathValue, setEditPathValue] = useState('');
   const pathInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Per-server directory history + pinned directories (recent list & pins are
+  // stored keyed by connectionId, so each server keeps its own — see
+  // lib/sftp-directory-history). Re-read on connection change and whenever the
+  // store mutates (this or another window) so the dropdown stays in sync.
+  const [dirState, setDirState] = useState<ServerDirState>(() => getDirState(connectionId));
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // This browser instance is REUSED across connection switches (the connectionId
+  // prop changes; the component doesn't remount). Recompute the per-server state
+  // SYNCHRONOUSLY during render when the active server changes, so the dropdown
+  // can never show the previous server's history/pins for even one painted frame
+  // (a passive effect would update it only after paint). This is the sanctioned
+  // "adjust state when a prop changes" pattern — guarded so it runs once per switch.
+  const dirStateKeyRef = useRef(connectionId);
+  if (dirStateKeyRef.current !== connectionId) {
+    dirStateKeyRef.current = connectionId;
+    setDirState(getDirState(connectionId));
+  }
+  // Refresh when the store mutates in this window (change-event) or another
+  // window (native storage event).
+  useEffect(() => {
+    const refresh = () => setDirState(getDirState(connectionId));
+    window.addEventListener(SFTP_DIR_HISTORY_CHANGED_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(SFTP_DIR_HISTORY_CHANGED_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, [connectionId]);
 
   // Mock file data - in real implementation, this would fetch from SSH connection
   const _mockFiles: FileItem[] = [
@@ -617,6 +667,12 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
           setSelectedFiles(new Set());
         }
         lastLoadedConnectionIdRef.current = connectionId;
+        // Record the visited directory in this server's history (keyed by
+        // connectionId). Reached only after the stale-gen check above, so
+        // superseded loads never pollute the history.
+        recordVisit(connectionId, targetPath);
+        // Explicit navigation to this path succeeded — clear the dead-target flag.
+        if (pendingUserNavRef.current === normalizePath(targetPath)) pendingUserNavRef.current = null;
       } else {
         // Empty or whitespace-only output — directory is genuinely empty
         // or the SSH command returned nothing.
@@ -639,6 +695,12 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
           setSelectedFiles(new Set());
         }
         lastLoadedConnectionIdRef.current = connectionId;
+        // Record the visited directory in this server's history (keyed by
+        // connectionId). Reached only after the stale-gen check above, so
+        // superseded loads never pollute the history.
+        recordVisit(connectionId, targetPath);
+        // Explicit navigation to this path succeeded — clear the dead-target flag.
+        if (pendingUserNavRef.current === normalizePath(targetPath)) pendingUserNavRef.current = null;
       }
     } catch (error) {
       // CancelledError means a newer load superseded this one — discard silently.
@@ -649,6 +711,17 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
       // connection whose cached path from a previous session doesn't exist
       // on the new server (e.g. /etc/nginx on server A, but not on B).
       if (targetPath !== '/home') {
+        // If the user EXPLICITLY navigated here (history/pin/breadcrumb/address
+        // bar) and the directory is gone, tell them instead of silently
+        // redirecting. Auto-loads don't set pendingUserNavRef, so the common
+        // "cached path from a previous session doesn't exist on this server"
+        // fallback on connection switch stays quiet.
+        if (pendingUserNavRef.current === normalizePath(targetPath)) {
+          toast.info(t('fileBrowser.toast.dirGone'), {
+            description: t('fileBrowser.toast.dirGoneDesc', { path: targetPath }),
+          });
+        }
+        pendingUserNavRef.current = null;
         committedPathRef.current = '/home';
         void loadFiles('/home');
         return;
@@ -676,6 +749,8 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
       // Trim any forward history past the current index, then push new entry
       setNavHistory((prev) => [...prev.slice(0, navIndex + 1), path]);
       setNavIndex((prev) => prev + 1);
+      // Explicit user navigation — flag it so a dead target reports a toast.
+      pendingUserNavRef.current = normalizePath(path);
     }
     setCurrentPath(path);
   };
@@ -707,6 +782,29 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
     const parent = currentPath.split('/').slice(0, -1).join('/') || '/';
     navigateTo(parent);
   };
+
+  // ── Directory history / pinned handlers (per-server, via connectionId) ──
+  const handleHistoryNavigate = (path: string) => {
+    setHistoryOpen(false);
+    if (normalizePath(path) === normalizePath(currentPath)) return;
+    navigateTo(path);
+  };
+  // The "pin current" control reads currentPath STATE. During the post-switch
+  // load window the restore effect deliberately skips setCurrentPath for cached
+  // connections, so currentPath still holds the PREVIOUS server's path until the
+  // new load completes. Gating on !isLoading prevents pinning server A's path
+  // under server B's id (a cross-server contamination). isLoading is true for
+  // the whole load window, so this is a reliable guard.
+  const canPinCurrent = isConnected && !isLoading;
+  const isCurrentPinned = canPinCurrent && dirState.pinned.includes(normalizePath(currentPath));
+  const toggleCurrentPin = () => {
+    if (!canPinCurrent) return;
+    if (dirState.pinned.includes(normalizePath(currentPath))) unpinDir(connectionId, currentPath);
+    else pinDir(connectionId, currentPath);
+  };
+  // Recent list with pinned entries filtered out (pins get their own section).
+  const pinnedSet = new Set(dirState.pinned);
+  const recentUnpinned = dirState.recent.filter((p) => !pinnedSet.has(p));
 
   /** Build breadcrumb segments from a path string */
   const getBreadcrumbs = (p: string): { label: string; path: string }[] => {
@@ -793,12 +891,17 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
       console.log('Navigating to directory:', file.path);
       navigateTo(file.path);
     } else {
-      // Open file in editor tab
-      if (onOpenInEditor) {
-        onOpenInEditor(file.path, file.name);
-      } else {
-        toast.info(t('app.noEditorHandler', { name: file.name }));
-      }
+      // Double-click opens the remote file directly in VS Code (with save → re-upload).
+      void handleOpenInVsCode(file);
+    }
+  };
+
+  // Open a file in the built-in in-app editor (kept available via the context menu).
+  const handleOpenInAppEditor = (file: FileItem) => {
+    if (onOpenInEditor) {
+      onOpenInEditor(file.path, file.name);
+    } else {
+      toast.info(t('app.noEditorHandler', { name: file.name }));
     }
   };
 
@@ -946,6 +1049,24 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
       });
     } catch (error) {
       console.error('Download dialog error:', error);
+    }
+  };
+
+  // Open a remote file in VS Code; saves are auto-uploaded back by the backend
+  // (see src-tauri/src/editor). Returns a session id we don't need to track here.
+  const handleOpenInVsCode = async (file: FileItem) => {
+    if (file.type !== 'file') return;
+    try {
+      toast.info(t('fileBrowser.contextMenu.openingInVsCode', { name: file.name }));
+      await invoke<string>('open_in_external_editor', {
+        connectionId,
+        remotePath: file.path,
+        fileName: file.name,
+      });
+    } catch (error) {
+      toast.error(t('fileBrowser.contextMenu.failedToOpenInVsCode'), {
+        description: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -1399,6 +1520,125 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
             <Home className="h-3.5 w-3.5" />
           </Button>
 
+          {/* Directory history + pinned (per-server) */}
+          <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0 rounded-md"
+                title={t('fileBrowser.history.title')}
+              >
+                <History className="h-3.5 w-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 p-0 text-xs">
+              {/* Header: pin current directory */}
+              <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+                <span className="font-medium">{t('fileBrowser.history.title')}</span>
+                <Button
+                  variant={isCurrentPinned ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="h-6 gap-1 px-2 text-[11px]"
+                  onClick={toggleCurrentPin}
+                  disabled={!canPinCurrent}
+                  title={isCurrentPinned ? t('fileBrowser.history.unpin') : t('fileBrowser.history.pinCurrent')}
+                >
+                  {isCurrentPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                  {isCurrentPinned ? t('fileBrowser.history.pinnedCurrent') : t('fileBrowser.history.pinCurrent')}
+                </Button>
+              </div>
+
+              <ScrollArea className="max-h-80 overflow-y-auto">
+                <div className="p-1.5">
+                  {dirState.pinned.length === 0 && recentUnpinned.length === 0 && (
+                    <div className="px-2 py-6 text-center text-muted-foreground">
+                      {t('fileBrowser.history.empty')}
+                    </div>
+                  )}
+
+                  {/* Pinned section */}
+                  {dirState.pinned.length > 0 && (
+                    <>
+                      <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t('fileBrowser.history.pinned')}
+                      </div>
+                      {dirState.pinned.map((p) => (
+                        <div key={`pin-${p}`} className="flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-muted">
+                          <button
+                            className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left"
+                            onClick={() => handleHistoryNavigate(p)}
+                            title={p}
+                          >
+                            <Pin className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{p}</span>
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
+                            title={t('fileBrowser.history.unpin')}
+                            onClick={() => unpinDir(connectionId, p)}
+                          >
+                            <PinOff className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Recent section */}
+                  {recentUnpinned.length > 0 && (
+                    <>
+                      <div className="flex items-center justify-between px-2 pb-1 pt-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {t('fileBrowser.history.recent')}
+                        </span>
+                        <button
+                          className="text-[10px] text-muted-foreground hover:text-foreground"
+                          onClick={() => clearRecent(connectionId)}
+                          title={t('fileBrowser.history.clear')}
+                        >
+                          {t('fileBrowser.history.clear')}
+                        </button>
+                      </div>
+                      {recentUnpinned.map((p) => (
+                        <div key={`recent-${p}`} className="group/histrow flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-muted">
+                          <button
+                            className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left"
+                            onClick={() => handleHistoryNavigate(p)}
+                            title={p}
+                          >
+                            <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{p}</span>
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0 text-muted-foreground hover:text-primary"
+                            title={t('fileBrowser.history.pin')}
+                            onClick={() => pinDir(connectionId, p)}
+                          >
+                            <Pin className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
+                            title={t('fileBrowser.history.remove')}
+                            onClick={() => removeRecent(connectionId, p)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
           {/* Breadcrumb / Editable address bar */}
           <div
             className="mx-1 flex h-6 min-w-0 flex-1 cursor-text items-center rounded-md border border-border/50 bg-muted/50 px-1.5 shadow-inner group hover:border-border"
@@ -1724,13 +1964,17 @@ export function IntegratedFileBrowser({ connectionId, host: _host, isConnected, 
                   {/* File-specific actions */}
                   {file.type === 'file' && (
                     <>
-                      <ContextMenuItem onClick={() => handleFileDoubleClick(file)}>
+                      <ContextMenuItem onClick={() => handleOpenInAppEditor(file)}>
                         <Eye className="mr-2 h-4 w-4" />
                         Open
                       </ContextMenuItem>
-                      <ContextMenuItem onClick={() => handleFileDoubleClick(file)}>
+                      <ContextMenuItem onClick={() => handleOpenInAppEditor(file)}>
                         <Edit className="mr-2 h-4 w-4" />
                         Edit
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => handleOpenInVsCode(file)}>
+                        <Code className="mr-2 h-4 w-4" />
+                        {t('fileBrowser.contextMenu.openInVsCode')}
                       </ContextMenuItem>
                       {onOpenInLogMonitor && (
                         <ContextMenuItem onClick={() => {
