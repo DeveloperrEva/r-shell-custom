@@ -35,16 +35,22 @@ export function deserialize(json: string): TerminalGroupState | null {
 
 /**
  * saveState — persist state to localStorage, warn on failure.
- * Editor tabs are ephemeral and excluded from persistence.
+ *
+ * Only editor tabs are excluded: they wrap a transient in-app file-edit session
+ * that cannot be recreated. Local terminal tabs ARE persisted so they reappear
+ * after a restart — the previous shell process doesn't survive, but the tab
+ * comes back and a fresh local shell is spawned on restore (see
+ * terminal-group-context `initializeState`), mirroring Terminal.app's
+ * "reopen windows" behaviour.
  */
 export function saveState(state: TerminalGroupState): void {
   try {
-    // Strip editor tabs before saving — they are transient and cannot be restored
+    // Strip editor tabs before saving — they are transient and cannot be restored.
     const filtered: TerminalGroupState = {
       ...state,
       groups: Object.fromEntries(
         Object.entries(state.groups).map(([id, group]) => {
-          const tabs = group.tabs.filter(t => t.tabType !== 'editor' && t.protocol !== 'Local');
+          const tabs = group.tabs.filter(t => t.tabType !== 'editor');
           return [id, {
             ...group,
             tabs,
@@ -56,7 +62,7 @@ export function saveState(state: TerminalGroupState): void {
         Object.entries(state.tabToGroupMap).filter(([tabId]) => {
           const group = state.groups[state.tabToGroupMap[tabId]];
           const tab = group?.tabs.find(t => t.id === tabId);
-          return tab?.tabType !== 'editor' && tab?.protocol !== 'Local';
+          return tab?.tabType !== 'editor';
         }),
       ),
     };

@@ -28,18 +28,23 @@ function initializeState(): TerminalGroupState {
   const loaded = loadState();
   if (!loaded) return createDefaultState();
 
-  // Reset all tabs to 'pending' — SSH sessions don't survive app restart.
-  // This indicates the tab needs SSH connection to be established.
-  // The restoreConnections effect in App.tsx will re-establish connections.
+  // Backend sessions don't survive an app restart, so reset each tab's status:
+  //  - SSH/SFTP/RDP/VNC tabs → 'pending': the restoreConnections effect in
+  //    App.tsx re-establishes their connection.
+  //  - LOCAL terminal tabs → 'connecting': there is no server to reconnect, so
+  //    we mount the PtyTerminal immediately (the render gate hides 'pending'
+  //    tabs behind a "Waiting for connection…" placeholder) and it lazily spawns
+  //    a FRESH local shell. Leaving them 'pending' would strand them on that
+  //    placeholder forever, since restoreConnections never touches local tabs.
   const groups: Record<string, TerminalGroup> = {};
   const tabToGroupMap: Record<string, string> = {};
-  
+
   for (const [id, group] of Object.entries(loaded.groups)) {
     groups[id] = {
       ...group,
       tabs: group.tabs.map((tab) => ({
         ...tab,
-        connectionStatus: 'pending' as const,
+        connectionStatus: tab.protocol === 'Local' ? ('connecting' as const) : ('pending' as const),
       })),
     };
     for (const tab of group.tabs) {

@@ -257,3 +257,53 @@ describe('createDefaultState', () => {
     }
   });
 });
+
+describe('local terminal tab persistence', () => {
+  beforeEach(() => localStorage.clear());
+
+  function stateWith(tabs: TerminalTab[], activeTabId?: string): TerminalGroupState {
+    return {
+      groups: { '1': { id: '1', tabs, activeTabId: activeTabId ?? tabs[0]?.id ?? null } },
+      activeGroupId: '1',
+      tabToGroupMap: Object.fromEntries(tabs.map((t) => [t.id, '1'])),
+      gridLayout: { type: 'leaf', groupId: '1' },
+      nextGroupId: 2,
+    };
+  }
+
+  it('persists local terminal tabs and only strips editor tabs', () => {
+    const local: TerminalTab = { ...makeTab('local-1'), protocol: 'Local', tabType: 'terminal' };
+    const ssh: TerminalTab = { ...makeTab('ssh-1'), protocol: 'SSH', tabType: 'terminal' };
+    const editor: TerminalTab = { ...makeTab('editor-1'), tabType: 'editor' };
+    saveState(stateWith([local, ssh, editor]));
+
+    const loaded = loadState();
+    expect(loaded).not.toBeNull();
+    const tabs = loaded!.groups['1'].tabs;
+    const ids = tabs.map((t) => t.id);
+
+    expect(ids).toContain('local-1'); // local terminal now survives a restart
+    expect(ids).toContain('ssh-1');
+    expect(ids).not.toContain('editor-1'); // editor tabs stay ephemeral
+    expect(tabs.find((t) => t.id === 'local-1')?.protocol).toBe('Local');
+  });
+
+  it('keeps tabToGroupMap consistent (local kept, editor removed)', () => {
+    const local: TerminalTab = { ...makeTab('local-1'), protocol: 'Local' };
+    const editor: TerminalTab = { ...makeTab('editor-1'), tabType: 'editor' };
+    saveState(stateWith([local, editor]));
+
+    const loaded = loadState()!;
+    expect(loaded.tabToGroupMap['local-1']).toBeDefined();
+    expect(loaded.tabToGroupMap['editor-1']).toBeUndefined();
+  });
+
+  it('reassigns activeTabId when the active tab was a stripped editor tab', () => {
+    const editor: TerminalTab = { ...makeTab('editor-1'), tabType: 'editor' };
+    const local: TerminalTab = { ...makeTab('local-1'), protocol: 'Local' };
+    saveState(stateWith([editor, local], 'editor-1'));
+
+    const loaded = loadState()!;
+    expect(loaded.groups['1'].activeTabId).toBe('local-1');
+  });
+});
