@@ -25,6 +25,11 @@ pub enum WsMessage {
         /// `#[serde(default)]` keeps existing SSH StartPty messages (no `local`) valid.
         #[serde(default)]
         local: bool,
+        /// For LOCAL shells: the directory to start in (a restored tab's last
+        /// working directory). Ignored for SSH. `#[serde(default)]` keeps older
+        /// messages without this field valid.
+        #[serde(default)]
+        cwd: Option<String>,
     },
     /// Terminal input (user typing)
     Input {
@@ -64,6 +69,15 @@ pub enum WsMessage {
     PtyStarted {
         connection_id: String,
         generation: u64,
+    },
+    /// Frontend → backend: ask for a LOCAL shell's current working directory so
+    /// it can be persisted for restore. Polled periodically by local terminals.
+    QueryCwd { connection_id: String },
+    /// Backend → frontend: the shell's current working directory (`None` if the
+    /// session is not local or its shell is gone).
+    CwdInfo {
+        connection_id: String,
+        cwd: Option<String>,
     },
 
     // ===== Desktop (RDP/VNC) messages =====
@@ -419,6 +433,7 @@ impl WebSocketServer {
                 cols,
                 rows,
                 local,
+                cwd,
             } => {
                 tracing::info!(
                     "Starting {} PTY connection: {} ({}x{})",
@@ -430,7 +445,7 @@ impl WebSocketServer {
 
                 let generation = if local {
                     self.connection_manager
-                        .start_local_pty_connection(&connection_id, cols, rows)
+                        .start_local_pty_connection(&connection_id, cols, rows, cwd)
                         .await?
                 } else {
                     self.connection_manager
@@ -623,6 +638,20 @@ impl WebSocketServer {
                 }
                 Ok(PtyLifecycleEvent::None)
             }
+            WsMessage::QueryCwd { connection_id } => {
+                let cwd = self
+                    .connection_manager
+                    .get_local_pty_cwd(&connection_id)
+                    .await;
+                let response = WsMessage::CwdInfo {
+                    connection_id,
+                    cwd,
+                };
+                send_control(&tx, &response).await?;
+                Ok(PtyLifecycleEvent::None)
+            }
+            // Backend never receives CwdInfo (it's a backend→frontend reply); ignore.
+            WsMessage::CwdInfo { .. } => Ok(PtyLifecycleEvent::None),
             WsMessage::Close {
                 connection_id,
                 generation,

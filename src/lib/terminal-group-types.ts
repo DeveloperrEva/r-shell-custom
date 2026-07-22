@@ -22,6 +22,9 @@ export interface TerminalTab {
   editorFilePath?: string;
   /** For editor tabs: the SSH connectionId used to read/write the file */
   editorConnectionId?: string;
+  /** For LOCAL terminal tabs: the shell's last known working directory. Persisted
+   *  so a restored tab reopens in the same folder it was left in. */
+  cwd?: string;
 }
 
 /** 终端组 */
@@ -55,6 +58,7 @@ export type TerminalGroupAction =
   | { type: 'CLOSE_TABS_TO_LEFT'; groupId: string; tabId: string }
   | { type: 'MOVE_TAB_TO_NEW_GROUP'; groupId: string; tabId: string; direction: SplitDirection }
   | { type: 'UPDATE_TAB_STATUS'; tabId: string; status: 'connected' | 'connecting' | 'disconnected' | 'pending' }
+  | { type: 'UPDATE_TAB_CWD'; tabId: string; cwd: string }
   | { type: 'RECONNECT_TAB'; tabId: string }
   | { type: 'UPDATE_GRID_SIZES'; path: number[]; sizes: number[] }
   | { type: 'RESET_LAYOUT' }

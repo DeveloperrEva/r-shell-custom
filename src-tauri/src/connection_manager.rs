@@ -167,6 +167,7 @@ impl ConnectionManager {
         connection_id: &str,
         cols: u32,
         rows: u32,
+        cwd: Option<String>,
     ) -> Result<u64> {
         // Cancel and remove any existing PTY session for this connection first.
         {
@@ -177,8 +178,9 @@ impl ConnectionManager {
             }
         }
 
-        // Spawn the local shell PTY (no SSH client needed).
-        let pty = crate::local_pty::create_local_pty_session(cols, rows)?;
+        // Spawn the local shell PTY (no SSH client needed), starting in `cwd`
+        // (the restored tab's last directory) when provided and valid.
+        let pty = crate::local_pty::create_local_pty_session(cols, rows, cwd)?;
 
         // Bump generation so any in-flight Close for the old session is ignored.
         let mut generations = self.pty_generations.write().await;
@@ -281,6 +283,17 @@ impl ConnectionManager {
     pub async fn get_pty_cancel_token(&self, connection_id: &str) -> Option<CancellationToken> {
         let sessions = self.pty_sessions.read().await;
         sessions.get(connection_id).map(|s| s.cancel.clone())
+    }
+
+    /// Current working directory of a LOCAL PTY session's shell, if known.
+    /// Returns `None` for SSH sessions (no local pid) or if the shell is gone.
+    /// Used to persist a local tab's directory so it can be restored on restart.
+    pub async fn get_local_pty_cwd(&self, connection_id: &str) -> Option<String> {
+        let pid = {
+            let sessions = self.pty_sessions.read().await;
+            sessions.get(connection_id).and_then(|s| s.shell_pid)?
+        };
+        crate::local_pty::read_process_cwd(pid)
     }
 
     /// Resize PTY terminal (send window-change to remote SSH channel)

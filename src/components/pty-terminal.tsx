@@ -25,7 +25,13 @@ interface PtyTerminalProps {
   isActive?: boolean;
   /** When true, this terminal is a LOCAL shell (spawned on this machine), not SSH. */
   isLocal?: boolean;
+  /** For LOCAL shells: directory to start the fresh shell in on (re)mount — the
+   *  tab's last known working directory, so a restored tab reopens where it left off. */
+  initialCwd?: string;
   onConnectionStatusChange?: (connectionId: string, status: 'connected' | 'connecting' | 'disconnected' | 'pending') => void;
+  /** For LOCAL shells: reports the shell's current working directory as it changes,
+   *  so it can be persisted for restore. */
+  onCwdChange?: (connectionId: string, cwd: string) => void;
 }
 
 /**
@@ -53,7 +59,9 @@ export function PtyTerminal({
   themeKey = 0,
   isActive = true,
   isLocal = false,
-  onConnectionStatusChange
+  initialCwd,
+  onConnectionStatusChange,
+  onCwdChange
 }: PtyTerminalProps) {
   const { t } = useTranslation();
   const terminalRef = React.useRef<HTMLDivElement | null>(null);
@@ -67,6 +75,18 @@ export function PtyTerminal({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const initialIsActiveRef = React.useRef(isActive);
   const wasActiveRef = React.useRef(isActive);
+  // Directory to spawn the NEXT shell in (first mount = restored dir; a later
+  // drop-reconnect = the latest polled dir). Updated every render but only read
+  // at StartPty time, and `initialCwd` is deliberately NOT in the main effect's
+  // deps, so a poll update never respawns a running shell.
+  const initialCwdRef = React.useRef(initialCwd);
+  initialCwdRef.current = initialCwd;
+  // Updated every render so the WS poll callback always sees the latest handler
+  // without re-running the main effect (which would tear down the PTY).
+  const onCwdChangeRef = React.useRef(onCwdChange);
+  onCwdChangeRef.current = onCwdChange;
+  // Interval handle for polling a local shell's working directory (see below).
+  const cwdPollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Search bar state
   const [searchVisible, setSearchVisible] = React.useState(false);
@@ -98,6 +118,11 @@ export function PtyTerminal({
   // Auto-reconnect tracking after a successful session drops (e.g. sleep/wake, server timeout)
   const autoReconnectAfterDropRef = React.useRef(0);
   const MAX_AUTO_RECONNECT_AFTER_DROP = 5;
+
+  // How often a LOCAL shell's working directory is polled (ms). The latest value
+  // is persisted on the tab so a restart reopens it in the same folder; a few
+  // seconds of staleness is harmless.
+  const CWD_POLL_INTERVAL_MS = 3000;
 
   // Cumulative bytes written to xterm this session — reset on clear.
   const sessionOutputRef = React.useRef(0);
@@ -401,9 +426,27 @@ export function PtyTerminal({
           cols: term.cols,
           rows: term.rows,
           local: isLocal,
+          // Restore the tab's last directory for local shells (ignored for SSH).
+          // Guard the type: the Rust WsMessage expects `Option<String>`, so a
+          // non-string cwd (e.g. from corrupted/tampered localStorage) would make
+          // the whole StartPty fail to deserialize and the shell never spawn.
+          cwd: isLocal && typeof initialCwdRef.current === 'string' ? initialCwdRef.current : undefined,
         };
         console.log(`[PTY Terminal] [${connectionId}] Starting PTY connection with ${term.cols}x${term.rows}`);
         ws.send(JSON.stringify(startMsg));
+
+        // For local shells, poll the backend for the shell's working directory so
+        // the tab records where it currently is and can be restored there. Clear
+        // any prior timer first (reconnect reuses this ref).
+        if (isLocal) {
+          if (cwdPollTimerRef.current) clearInterval(cwdPollTimerRef.current);
+          cwdPollTimerRef.current = setInterval(() => {
+            const w = wsRef.current;
+            if (w && w.readyState === WebSocket.OPEN) {
+              w.send(JSON.stringify({ type: 'QueryCwd', connection_id: connectionId }));
+            }
+          }, CWD_POLL_INTERVAL_MS);
+        }
       };
 
       // =========================================================================
@@ -589,6 +632,13 @@ export function PtyTerminal({
               break;
             }
               
+            case 'CwdInfo':
+              // Local shell reported its current directory — persist it on the tab.
+              if (msg.connection_id === connectionId && typeof msg.cwd === 'string' && msg.cwd) {
+                onCwdChangeRef.current?.(connectionId, msg.cwd);
+              }
+              break;
+
             case 'Output':
               if (msg.data && msg.data.length > 0) {
                 enqueueOutput(new TextDecoder().decode(new Uint8Array(msg.data)));
@@ -642,6 +692,13 @@ export function PtyTerminal({
 
       ws.onclose = () => {
         console.log('[PTY Terminal] WebSocket closed');
+        // Stop the cwd poll now — a successful reconnect re-arms it in ws.onopen,
+        // so this only clears a timer that would otherwise linger (doing no-op
+        // readyState checks) when auto-reconnect is exhausted.
+        if (cwdPollTimerRef.current) {
+          clearInterval(cwdPollTimerRef.current);
+          cwdPollTimerRef.current = null;
+        }
         if (isRunning) {
           // If a session was successfully established, a WS drop means the
           // remote shell is gone (e.g. sleep/wake cycle, server timeout).
@@ -796,6 +853,12 @@ export function PtyTerminal({
     return () => {
       console.log(`[PTY Terminal] [${connectionId}] Cleaning up`);
       isRunning = false;
+
+      // Stop polling the local shell's working directory.
+      if (cwdPollTimerRef.current) {
+        clearInterval(cwdPollTimerRef.current);
+        cwdPollTimerRef.current = null;
+      }
 
       // Cancel any pending RAF write batch and discard queued data so no
       // stale writes reach a terminal that is about to be disposed.

@@ -480,6 +480,47 @@ describe('UPDATE_TAB_STATUS', () => {
   });
 });
 
+// ── Reducer: UPDATE_TAB_CWD ──
+
+describe('UPDATE_TAB_CWD', () => {
+  it('records the working directory on the tab', () => {
+    const state = stateWithTabs('1', [makeTab('t1')]);
+    const next = terminalGroupReducer(state, {
+      type: 'UPDATE_TAB_CWD',
+      tabId: 't1',
+      cwd: '/Users/me/projects/app',
+    });
+    expect(next.groups['1'].tabs[0].cwd).toBe('/Users/me/projects/app');
+  });
+
+  it('is a no-op (same reference) when cwd is unchanged', () => {
+    const base = stateWithTabs('1', [makeTab('t1')]);
+    const withCwd = terminalGroupReducer(base, {
+      type: 'UPDATE_TAB_CWD',
+      tabId: 't1',
+      cwd: '/tmp/x',
+    });
+    // Polling the same directory again must not allocate new state (avoids a
+    // redundant re-render + localStorage write on every poll).
+    const again = terminalGroupReducer(withCwd, {
+      type: 'UPDATE_TAB_CWD',
+      tabId: 't1',
+      cwd: '/tmp/x',
+    });
+    expect(again).toBe(withCwd);
+  });
+
+  it('returns same state if tab not found', () => {
+    const state = createDefaultState();
+    const next = terminalGroupReducer(state, {
+      type: 'UPDATE_TAB_CWD',
+      tabId: 'nope',
+      cwd: '/tmp',
+    });
+    expect(next).toBe(state);
+  });
+});
+
 // ── Reducer: UPDATE_GRID_SIZES ──
 
 describe('UPDATE_GRID_SIZES', () => {

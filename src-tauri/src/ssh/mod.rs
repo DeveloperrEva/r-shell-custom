@@ -63,6 +63,10 @@ pub struct PtySession {
     /// Cancellation token — cancelled when this session is torn down.
     /// The WebSocket reader task should select on this to stop promptly.
     pub cancel: CancellationToken,
+    /// OS pid of the spawned shell, for LOCAL sessions only (SSH sessions set
+    /// this to `None`). Used to read the shell's current working directory so a
+    /// restored local tab can reopen in the same folder it was left in.
+    pub shell_pid: Option<u32>,
 }
 
 pub struct Client;
@@ -380,6 +384,7 @@ impl SshClient {
                 output_rx: Arc::new(tokio::sync::Mutex::new(output_rx)),
                 resize_tx,
                 cancel: CancellationToken::new(),
+                shell_pid: None, // SSH sessions have no local shell pid
             })
         } else {
             Err(anyhow::anyhow!("Not connected"))

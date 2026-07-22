@@ -117,6 +117,21 @@ describe('serialize / deserialize', () => {
     const state = createDefaultState();
     expect(deserialize(serialize(state))).toEqual(state);
   });
+
+  it('round-trips a tab with a string cwd', () => {
+    const state = makeState();
+    state.groups['1'].tabs[0].cwd = '/Users/me/projects/app';
+    expect(deserialize(serialize(state))).toEqual(state);
+  });
+
+  it('returns null when a tab cwd is not a string (would break StartPty)', () => {
+    const state = makeState();
+    // Simulate corrupted/tampered localStorage: cwd is a number, which would
+    // otherwise flow into StartPty and fail Rust Option<String> deserialization.
+    (state.groups['1'].tabs[0] as unknown as Record<string, unknown>).cwd = 123;
+    const json = serialize(state);
+    expect(deserialize(json)).toBeNull();
+  });
 });
 
 describe('saveState / loadState', () => {

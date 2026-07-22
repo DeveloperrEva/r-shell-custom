@@ -511,6 +511,33 @@ export function terminalGroupReducer(
       };
     }
 
+    case 'UPDATE_TAB_CWD': {
+      const { tabId, cwd } = action;
+      const groupId = state.tabToGroupMap[tabId];
+      if (!groupId) return state;
+
+      const group = state.groups[groupId];
+      if (!group) return state;
+
+      const tabIndex = group.tabs.findIndex((t) => t.id === tabId);
+      if (tabIndex === -1) return state;
+
+      // No-op if unchanged — avoids a needless re-render + localStorage write on
+      // every cwd poll while the user stays in the same directory.
+      if (group.tabs[tabIndex].cwd === cwd) return state;
+
+      const newTabs = [...group.tabs];
+      newTabs[tabIndex] = { ...newTabs[tabIndex], cwd };
+
+      return {
+        ...state,
+        groups: {
+          ...state.groups,
+          [groupId]: { ...group, tabs: newTabs },
+        },
+      };
+    }
+
     case 'RECONNECT_TAB': {
       const { tabId } = action;
       const groupId = state.tabToGroupMap[tabId];

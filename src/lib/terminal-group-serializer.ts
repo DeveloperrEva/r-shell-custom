@@ -147,6 +147,12 @@ function isValidState(value: unknown): value is TerminalGroupState {
     if (typeof group.id !== 'string') return false;
     if (!Array.isArray(group.tabs)) return false;
     if (group.activeTabId !== null && typeof group.activeTabId !== 'string') return false;
+    // `cwd` uniquely flows back onto the StartPty wire message (Rust expects
+    // Option<String>), so reject a persisted tab whose cwd is not a string —
+    // otherwise its local shell would fail to spawn on restore.
+    for (const tab of group.tabs as Array<Record<string, unknown>>) {
+      if (tab && tab.cwd !== undefined && typeof tab.cwd !== 'string') return false;
+    }
   }
 
   return true;
