@@ -76,7 +76,10 @@ fn build_app_menu<F: Fn(&str) -> String>(
                 "close_connection",
                 &t("menuBar.closeTab"),
                 true,
-                None::<&str>,
+                // Cmd+W closes the active tab (emits "close_connection" -> App.tsx
+                // REMOVE_TAB). On macOS CmdOrCtrl resolves to Cmd only, so Ctrl+W
+                // stays free for the shell's delete-previous-word.
+                Some("CmdOrCtrl+W"),
             )?,
         ],
     )?;

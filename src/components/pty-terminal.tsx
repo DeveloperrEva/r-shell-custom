@@ -41,14 +41,14 @@ interface PtyTerminalProps {
  * It supports all interactive commands like vim, less, more, top, etc.
  * 
  * Communication is done via WebSocket for low-latency bidirectional streaming.
+ *
+ * Memory is bounded by xterm's own `scrollback` option (see terminal-config,
+ * default 10000 lines, capped at MAX_TERMINAL_SCROLLBACK): xterm evicts the
+ * oldest lines automatically as new ones arrive, with no reset and no visible
+ * disruption. Combined with the credit-based flow control below (the backend
+ * only streams as fast as xterm drains), a `yes`-style flood stays bounded
+ * without ever clearing the user's screen.
  */
-
-/** Per-session output cap. When cumulative bytes written to xterm exceed this
- *  value the scrollback is cleared automatically so V8 heap stays bounded.
- *  2 MB of decoded text ≈ ~25k typical 80-char terminal lines. Kept low to
- *  prevent V8 heap fragmentation and WebGL texture-cache bloat during
- *  sustained high-throughput output (e.g. `yes`). */
-const SESSION_OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 
 export function PtyTerminal({
   connectionId,
@@ -124,8 +124,6 @@ export function PtyTerminal({
   // seconds of staleness is harmless.
   const CWD_POLL_INTERVAL_MS = 3000;
 
-  // Cumulative bytes written to xterm this session — reset on clear.
-  const sessionOutputRef = React.useRef(0);
   const inputEncoderRef = React.useRef(new TextEncoder());
 
   const sendInputToPty = React.useCallback((data: string): boolean => {
@@ -504,16 +502,10 @@ export function PtyTerminal({
       // the RAF batched-flush path and the synchronous idle fast-path so credit /
       // watermark / memory-cap handling is byte-for-byte identical on both.
       const writeChunk = (data: string) => {
-        // Enforce per-session memory cap so xterm's scrollback buffer can't
-        // grow without bound on sustained high-throughput output (e.g. `yes`).
-        sessionOutputRef.current += data.length;
-        if (sessionOutputRef.current >= SESSION_OUTPUT_LIMIT_BYTES) {
-          term.reset();
-          term.clear();
-          sessionOutputRef.current = 0;
-          term.writeln('\x1b[33m[Output limit reached \u2014 scrollback cleared to free memory]\x1b[0m');
-        }
-
+        // Memory is bounded by xterm's `scrollback` option (oldest lines are
+        // evicted automatically) - no reset/clear here, which would corrupt the
+        // display of a running full-screen program (vim/less/htop) by desyncing
+        // xterm's state (alt-screen, scroll region, modes) from the remote's.
         term.write(data, () => {
           // xterm finished processing this batch - update watermark
           watermark = Math.max(watermark - data.length, 0);
@@ -557,9 +549,9 @@ export function PtyTerminal({
         // the branch is reachable only when rafId===null, and it immediately sets
         // rafId (reset to null only at the top of flushWriteBuffer, once per frame).
         // So there is AT MOST ONE synchronous write per frame (plus at most one
-        // batched flush write per frame). The watermark/credit/SESSION_OUTPUT_LIMIT
-        // machinery in writeChunk runs identically on both paths, and the backend
-        // keeps stalling on credits.acquire() when xterm falls behind.
+        // batched flush write per frame). The watermark/credit machinery in
+        // writeChunk runs identically on both paths, and the backend keeps
+        // stalling on credits.acquire() when xterm falls behind.
         if (rafId === null && !writeBuffer && text.length <= MAX_SYNC_WRITE_BYTES) {
           watermark += text.length;
           writeChunk(text);
